@@ -1,0 +1,116 @@
+import importlib
+from perfis import buscar_perfil, perfis_z90, perfis_z45, perfis_z
+from calculos_solicitante.calculos_solicitante import calcular_solicitante
+
+
+def main():
+    print("\n📌 Perfis disponíveis para seleção:")
+    perfis_disponiveis = [
+        "Z90 150x60x20x2.00", "Z90 150x60x20x4.75",
+        "Z90 200x75x20x2.00", "Z90 200x75x30x6.30",
+        "Z90 250x85x25x2.00", "Z90 250x85x25x4.75",
+        "Z90 300x85x25x2.00", "Z90 300x85x30x6.30",
+        "Z45 150x60x20x2.00", "Z45 150x60x20x4.75",
+        "Z45 200x75x20x2.00", "Z45 200x75x30x6.30",
+        "Z45 250x85x25x2.00", "Z45 250x85x25x4.75",
+        "Z45 300x85x25x2.00", "Z45 300x85x30x6.30"
+    ]
+
+    for perfil in perfis_disponiveis:
+        print(f"   - {perfil}")
+
+    # Solicitar perfil ao usuário
+    nome_perfil_completo = input("\nDigite o nome exato do perfil desejado: ").strip()
+    tipo, nome_perfil = nome_perfil_completo.split(" ", 1)
+
+    if tipo == "Z90":
+        lista_perfis = perfis_z90
+    elif tipo == "Z45":
+        lista_perfis = perfis_z45
+    elif tipo == "Z":
+        lista_perfis = perfis_z
+    else:
+        print("❌ Tipo de perfil não reconhecido. Apenas Z90 e Z45 estão disponíveis.")
+        return
+
+    perfil_escolhido = buscar_perfil(nome_perfil, lista_perfis)
+    if not perfil_escolhido:
+        print("❌ Perfil não encontrado. Verifique a digitação e tente novamente.")
+        return
+
+    print(f"\n✅ Perfil selecionado: {tipo} {nome_perfil}")
+
+    # Entrada da tensão de trabalho (fy)
+    while True:
+        try:
+            fy = float(input("\nQual a tensão de trabalho (fy) em kN/cm²? "))
+            break
+        except ValueError:
+            print("❌ Entrada inválida! Digite um número válido.")
+
+    # Entrada de Lx, Ly, Lz, Cb
+    while True:
+        try:
+            Lx = float(input("\nQual a distância entre as tesouras de cobertura (em cm)? "))
+            Lz = Lx    #avaliar
+            dist_terças = float(input("Qual a distância entre as terças em cm? "))  
+            ang = float(input("Qual a inclinação da cobertura em graus? "))
+            tirantes = float(input("\nQuantos tirantes existem entre as tesouras (máx.:3)? ")) 
+            if tirantes != 0:
+                dim_tirante= float(input(" -Qual é o diâmetro dos tirantes em mm? "))  
+            else:
+                dim_tirante = 0  
+            Ly = float(Lx / (tirantes + 1))                                                                 
+            Cb = float(input("\nQual o coeficiente Cb da viga? "))
+            break
+        except ValueError:
+            print("❌ Entrada inválida! Digite um número válido.")
+
+    # Entrada do carregamento característico                                        melhorar
+    while True:
+        try:
+            metodo = input("\nDeseja realizar a análise como viga bi-apoiada ou viga contínua em dois vãos? ")
+            print("\nUtilizar sinal de negativo para esforlos de compressão e positivo para esforços de tração.")
+            q_p_terça= perfil_escolhido["m"] / 100 #Já em kN/m; Futuramente será trocado e vinculado aos perfis.py
+            q_p_chapa= float(input(" -Qual é o peso próprio da chapa zincada em kg/m²? ")) / 100 #Já em kN/m²
+            q_v = float(input(" -Qual é a carga de vento sobre a terça em kN/m²? "))           #padronizar
+                
+            # Cálculo dos momentos solicitantes
+            Msd_x, Msd_y = calcular_solicitante(metodo, tirantes, Lx , Ly , dist_terças , ang, q_p_terça, q_p_chapa, dim_tirante, q_v)
+
+            print("\n📐 Momentos solicitantes máximos:")
+            print(f"   - Msd_x = {Msd_x:.3f} kN·cm")
+            print(f"   - Msd_y = {Msd_y:.3f} kN·cm")
+
+            break
+        except ValueError:
+            print("❌ Entrada inválida! Digite um número válido.")
+
+    # Importa e executa os cálculos corretos com base no tipo
+    try:
+        modulo = importlib.import_module(f"calculos_{tipo}.executar_calculos")
+        resultados = modulo.executar_calculos(perfil_escolhido, fy, Lx, Ly, Lz, Cb)
+
+        print("\n📊 Resultados dos esforços resistentes:")
+        for chave, valor in resultados.items():
+            print(f"   - {chave}: {valor:.3f} kN·cm")
+
+        print("\n🔎 Verificação dos esforços resistentes:")
+        for chave, valor in resultados.items():
+            if "Mrd_x" in chave:
+                metodo_x = chave.replace("Mrd_x_", "")
+                status = "❌ Não passou!" if abs(valor) < abs(Msd_x) else "✅ OK!"
+                print(f"{status} → Mrd_x_{metodo_x} = {valor:.2f} vs Msd_x = {Msd_x:.2f}")
+            if "Mrd_y" in chave:
+                metodo_y = chave.replace("Mrd_y_", "")
+                status = "❌ Não passou!" if abs(valor) < abs(Msd_y) else "✅ OK!"
+                print(f"{status} → Mrd_y_{metodo_y} = {valor:.2f} vs Msd_y = {Msd_y:.2f}")
+
+
+    except ModuleNotFoundError:
+        print(f"❌ Módulo de cálculo para perfis {tipo} ainda não está disponível.")
+    except Exception as e:
+        print(f"⚠️ Erro durante os cálculos: {e}")
+
+if __name__ == "__main__":
+    main()
