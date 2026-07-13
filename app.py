@@ -68,6 +68,8 @@ st.markdown("""
     .pass { color: #00703c; font-weight: bold; }
     .fail { color: #d4351c; font-weight: bold; }
     .na { color: #888; font-style: italic; }
+    /* Reduz a fonte dos valores calculados (Cb e Ly) na sidebar */
+    [data-testid="stMetricValue"] { font-size: 1.3rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -618,5 +620,11 @@ apoios e flexão composta — e de Estado Limite de Serviço (flechas).
 
 # --- Mensagem Final ---
 st.markdown("---")
+creditos = (
+    "Desenvolvedor: <b>Eng. Caio Rust</b> &nbsp;|&nbsp; "
+    "LinkedIn: <a href='https://www.linkedin.com/in/caio-rust-3b17572aa' target='_blank'>caio-rust</a> &nbsp;|&nbsp; "
+    "Email: <a href='mailto:caiorusts@gmail.com'>caiorusts@gmail.com</a>"
+)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 14px;'>{creditos}</p>", unsafe_allow_html=True)
 mensagem_final = "Os usuários desta versão educacional do programa estão livres de qualquer compromisso para usá-lo. Entretanto, nem o autor, a UFES, nem qualquer outra instituição relacionada são responsáveis pelo uso ou mau uso do programa e seus resultados. Os citados acima não possuem qualquer dever legal quando a aplicação dos resultados aqui gerados. Ademais, trata-se de uma ferramenta para auxílio no dimensionamento de terças, para a aplicação desse elemento é necessário uma avaliação estrutural minuciosa."
 st.markdown(f"<p style='text-align: center; color: grey; font-size: 12px;'>{mensagem_final}</p>", unsafe_allow_html=True)
