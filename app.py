@@ -1,5 +1,5 @@
 # app.py
-# Arquivo principal da aplicação com interface gráfica
+# Arquivo principal da aplicação com interface gráfica (DimTerçaZ)
 
 # --- Importações ---
 import streamlit as st
@@ -8,6 +8,8 @@ import importlib
 import sys
 import os
 import math # Adicionado para a lógica de flexão composta
+import re   # Usado na exportação para Excel (limpeza de HTML)
+import io   # Usado na exportação para Excel (buffer em memória)
 
 # Adiciona o diretório atual ao path para garantir que os módulos sejam encontrados
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -21,7 +23,7 @@ from calculos_Z.z_prop import calcular_zprop # Importa a função de perfil cust
 
 # --- Configuração da Página do Streamlit ---
 st.set_page_config(
-    page_title="Dimensionamento de Terças Z",
+    page_title="DimTerçaZ",
     page_icon="🏗️",
     layout="wide"
 )
@@ -255,6 +257,7 @@ def run_analysis(perfil, tipo, nome_perfil_completo, is_custom, fy, Lx, Ly, Lz, 
         linha = {
             "Perfil": nome_perfil_completo,
             "passou_geral": passou_geral, # Usado para a lógica de "próximo perfil"
+            "_massa": perfil.get("m", 0), # Apenas para exibição do resumo (kg/m)
             
             # Tabela 1: Momentos
             "ESC (Sd/Rd)": f"Mx: {fmt_check(Msd_x, mrd_x_esc, check_x_esc)}<br>My: {fmt_check(Msd_y, mrd_y_esc, check_y_esc)}",
@@ -284,7 +287,7 @@ def run_analysis(perfil, tipo, nome_perfil_completo, is_custom, fy, Lx, Ly, Lz, 
 
 
 # --- Interface Gráfica ---
-st.title("👨🏻‍💻 Ferramenta para Dimensionamento de Terças em Perfis Z")
+st.title("DimTerçaZ — Dimensionamento de Terças em Perfis Z em PFF")
 with st.expander("Visualizar Propriedades dos Perfis de Catálogo (Z90 e Z45)"):
     perfis_combinados = [dict(p, Tipo='Z90') for p in perfis_z90] + [dict(p, Tipo='Z45') for p in perfis_z45]
     df_perfis = pd.DataFrame(perfis_combinados)
@@ -294,7 +297,7 @@ with st.expander("Visualizar Propriedades dos Perfis de Catálogo (Z90 e Z45)"):
     st.dataframe(
         df_perfis[[col for col in colunas_ordem if col in df_perfis.columns]].style.set_properties(**{'text-align': 'center'}).format(precision=3),
         hide_index=True,
-        use_container_width=True
+        width="stretch"
     )
     st.caption("*Todas as unidades dessa tabela são derivadas de centímetros.*")
 
@@ -306,7 +309,7 @@ with st.sidebar:
     # Debug removido da UI
     debug_mode = False 
     
-    st.subheader("⚙️ Estrutura e Geometria")
+    st.subheader(":material/straighten: Estrutura e Geometria")
     
     # --- SELEÇÃO DE AÇO (NOVIDADE) ---
     tipo_entrada_aco = st.radio("Definição do Aço", ["Aço Estrutural", "Manual"], horizontal=True, label_visibility="collapsed")
@@ -333,7 +336,7 @@ with st.sidebar:
     ang = st.slider("Inclinação da cobertura (°)", 0, 45, 10)
     c = st.number_input("Largura de contato da tesoura (c, cm)", 1.0, value=15.0, step=1.0)
     
-    st.subheader("🔗 Modelo Estrutural")
+    st.subheader(":material/architecture: Modelo Estrutural")
     metodo = st.radio("Modelo de viga", ["Viga bi-apoiada", "Viga contínua"], index=0, horizontal=True)
     st.caption("*Para viga contínua foram considerados 2 vãos*")
     Cb = calcular_cb(metodo)
@@ -344,20 +347,21 @@ with st.sidebar:
     quadro_contraventado = st.radio("A terça faz parte do quadro contraventado?", ["Sim", "Não"], index=0, horizontal=True) == "Sim"
     Ly = Lx / (tirantes + 1) if tirantes is not None else Lx
     Lz = Ly
+    st.metric("Vão em Y — $L_y$ (Automático)", f"{Ly:.1f} cm")
     st.markdown("---")
-    st.subheader("⚖️ Carregamentos")
+    st.subheader(":material/weight: Carregamentos")
     q_p_chapa = st.number_input("Peso próprio da telha (kg/m²)", value=-5.0, step=0.5, format="%.2f") / 100
     q_v = st.number_input("Carga de vento (kN/m²)", value=-0.5, step=0.1, format="%.2f")
+    st.caption("*Carga de vento: valor negativo indica sucção (para cima) e positivo indica pressão (para baixo).*")
     q_sc = st.number_input("Sobrecarga (kN/m²)", min_value=0.0, value=0.25, step=0.05, format="%.2f", help="Sobrecarga de utilização. NBR 8800: mínimo 0.25 kN/m².")
     Ncsd = 0.0
     if quadro_contraventado:
         # Help text atualizado
         Ncsd = st.number_input("Esforço axial de cálculo ($N_{Sd}$, kN)", value=0.0, step=0.5, format="%.2f", help="Negativo para compressão, positivo para tração.")
-    st.caption("*Valores positivos para cargas gravitacionais (para baixo) e negativos para sucção (para cima).*")
     st.markdown("---")
     
     # --- SELEÇÃO DE PERFIL ATUALIZADA ---
-    st.subheader("🎯 Seleção de Perfis para Análise")
+    st.subheader(":material/checklist: Seleção de Perfis para Análise")
     tipo_selecionado = st.radio("Selecione o tipo de perfil", ["Z90", "Z45", "Customizado"], horizontal=True, index=0)
 
     analise_selecionada = None
@@ -375,8 +379,20 @@ with st.sidebar:
         opcoes = [f"Analisar todos os {tipo_selecionado}"] + perfis_tipo_completo
         analise_selecionada = st.selectbox("Escolha os perfis a serem analisados", opcoes)
 
+# --- Assinatura dos parâmetros de entrada ---
+# Se QUALQUER parâmetro mudar, os resultados exibidos são limpos imediatamente
+# (evita mostrar tabelas antigas com entradas novas).
+firma_atual = (
+    fy, Lx, dist_tercas, ang, c, metodo, tirantes, dim_tirante,
+    telha_trava, quadro_contraventado, q_p_chapa, q_v, q_sc, Ncsd,
+    tipo_selecionado, analise_selecionada, bf_custom, bw_custom, t_custom
+)
+if st.session_state.get("firma") != firma_atual:
+    st.session_state.pop("resultados", None)
+    st.session_state.pop("msgs", None)
+
 # --- Lógica do Botão Principal (Atualizada) ---
-if st.sidebar.button("Analisar Perfis", type="primary", use_container_width=True):
+if st.sidebar.button("Analisar Perfis", type="primary", width="stretch"):
     
     perfis_a_analisar = [] # Lista de tuplas: (perfil_obj, tipo, nome_completo, is_custom)
     is_analise_geral = False
@@ -431,7 +447,8 @@ if st.sidebar.button("Analisar Perfis", type="primary", use_container_width=True
     if perfis_a_analisar:
         with st.spinner("Calculando... Por favor, aguarde."):
             resultados_finais = []
-            
+            msgs = [] # Mensagens (aviso/sugestão) para re-exibir junto com os resultados
+
             if is_analise_geral:
                 # Analisa todos e adiciona na lista
                 for p_args in perfis_a_analisar:
@@ -443,32 +460,62 @@ if st.sidebar.button("Analisar Perfis", type="primary", use_container_width=True
                 # Análise individual (ou customizado)
                 primeiro_perfil_args = perfis_a_analisar[0]
                 primeiro_resultado, passou = run_analysis(*primeiro_perfil_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, q_sc=q_sc, debug=debug_mode)
-                
+
                 if primeiro_resultado:
                     resultados_finais.append(primeiro_resultado)
-                
+
                     if not passou and not is_custom:
-                        st.warning(f"O perfil selecionado **{primeiro_perfil_args[2]}** não atende aos requisitos. Buscando a próxima opção viável...")
+                        msgs.append(("warning", f"O perfil selecionado **{primeiro_perfil_args[2]}** não atende aos requisitos. Buscando a próxima opção viável..."))
                         perfil_sugerido_encontrado = False
                         # Itera no *restante* da lista (que já contém os próximos)
                         for i in range(1, len(perfis_a_analisar)):
                             proximo_perfil_args = perfis_a_analisar[i]
                             resultado_sugerido, passou_sugerido = run_analysis(*proximo_perfil_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, q_sc=q_sc, debug=debug_mode)
-                            
+
                             if resultado_sugerido and passou_sugerido:
-                                st.success(f"**Sugestão:** O perfil **{proximo_perfil_args[2]}** é a opção seguinte que atende aos requisitos.")
+                                msgs.append(("success", f"**Sugestão:** O perfil **{proximo_perfil_args[2]}** é a opção seguinte que atende aos requisitos."))
                                 resultados_finais.append(resultado_sugerido)
                                 perfil_sugerido_encontrado = True
                                 break # Para no primeiro que passar
-                                
-                        if not perfil_sugerido_encontrado:
-                            st.error("Nenhum perfil subsequente na lista atende aos requisitos.")
 
-            
-            # --- Exibição das Tabelas (NOVO FORMATO DE 3 TABELAS) ---
-            st.subheader("Tabela de Resultados")
-            if resultados_finais:
+                        if not perfil_sugerido_encontrado:
+                            msgs.append(("error", "Nenhum perfil subsequente na lista atende aos requisitos."))
+
+        if resultados_finais:
+            # Guarda na sessão: as tabelas persistem enquanto os parâmetros não mudarem
+            # (necessário para o botão de download do Excel não apagar os resultados)
+            st.session_state["resultados"] = resultados_finais
+            st.session_state["msgs"] = msgs
+            st.session_state["firma"] = firma_atual
+            st.session_state["res_is_custom"] = is_custom
+            st.session_state["res_is_geral"] = is_analise_geral
+        else:
+            st.warning("Nenhum resultado para exibir.")
+
+# --- Exibição dos Resultados (some automaticamente se algum parâmetro mudar) ---
+if st.session_state.get("resultados"):
+    resultados_finais = st.session_state["resultados"]
+    is_custom = st.session_state.get("res_is_custom", False)
+    is_analise_geral = st.session_state.get("res_is_geral", False)
+
+    for tipo_msg, texto_msg in st.session_state.get("msgs", []):
+        getattr(st, tipo_msg)(texto_msg)
+
+    # --- Exibição das Tabelas (NOVO FORMATO DE 3 TABELAS) ---
+    st.subheader("Tabela de Resultados")
+    if True:
+            if True:
                 df = pd.DataFrame(resultados_finais)
+
+                # --- Resumo da Análise ---
+                n_total = len(resultados_finais)
+                n_aprov = sum(1 for r in resultados_finais if r.get("passou_geral"))
+                resumo = f"**{n_aprov} de {n_total}** perfis analisados foram aprovados em todas as verificações."
+                aprovados_com_massa = [r for r in resultados_finais if r.get("passou_geral") and r.get("_massa", 0) > 0]
+                if is_analise_geral and aprovados_com_massa:
+                    mais_leve = min(aprovados_com_massa, key=lambda r: r["_massa"])
+                    resumo += f" Perfil aprovado mais leve: **{mais_leve['Perfil']}** ({mais_leve['_massa']:.2f} kg/m)."
+                st.info(resumo)
 
                 # --- Tabela 1: Momentos + Flexão Composta ---
                 cols_m = ["Perfil", "ESC (Sd/Rd)", "FLT (Sd/Rd)"]
@@ -524,10 +571,50 @@ if st.sidebar.button("Analisar Perfis", type="primary", use_container_width=True
                 # --- ATUALIZADO: Adiciona index=False ---
                 st.markdown(df_e.to_html(escape=False, index=False, classes='styled-table'), unsafe_allow_html=True)
 
-            else:
-                st.warning("Nenhum resultado para exibir.")
+                # --- Exportação para Excel ---
+                def _limpar_html(v):
+                    """Remove tags HTML das células para exportação limpa."""
+                    if not isinstance(v, str):
+                        return v
+                    v = v.replace("<br>", " | ")
+                    return re.sub(r"<[^>]+>", "", v)
 
+                buffer_xlsx = io.BytesIO()
+                with pd.ExcelWriter(buffer_xlsx, engine="openpyxl") as writer:
+                    df_m.apply(lambda col: col.map(_limpar_html)).to_excel(writer, sheet_name="Momentos", index=False)
+                    df_f.apply(lambda col: col.map(_limpar_html)).to_excel(writer, sheet_name="Esforcos", index=False)
+                    df_e.apply(lambda col: col.map(_limpar_html)).to_excel(writer, sheet_name="ELS", index=False)
 
+                st.download_button(
+                    "Baixar resultados (Excel)",
+                    data=buffer_xlsx.getvalue(),
+                    file_name="resultados_dimtercaz.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    icon=":material/download:",
+                )
+
+else:
+    # --- Página inicial (exibida antes da primeira análise) ---
+    col_intro, col_img = st.columns([2.5, 1])
+    with col_intro:
+        st.markdown("""
+#### Bem-vindo!
+
+Esta ferramenta realiza a verificação de **terças de cobertura em perfis Z de aço formados a frio (PFF)**,
+considerando as combinações de ações e as verificações de Estado Limite Último — início de escoamento (ESC),
+flambagem lateral com torção (FLT), flambagem distorcional (DIST), força cortante, forças concentradas nos
+apoios e flexão composta — e de Estado Limite de Serviço (flechas).
+
+**Como usar:**
+
+1. Preencha os parâmetros de entrada na barra lateral (geometria, modelo estrutural e carregamentos);
+2. Escolha o tipo de perfil: catálogo **Z90** ou **Z45**, ou informe as dimensões de um perfil **customizado**;
+3. Clique em **Analisar Perfis** e confira as tabelas de verificação — os resultados podem ser baixados em Excel.
+
+*Se o perfil escolhido não atender aos requisitos, a ferramenta sugere automaticamente o próximo perfil viável do catálogo.*
+        """)
+    with col_img:
+        st.image("assets/PERFIL Z90 3D sem fundo.jpg", caption="Perfil Z90", width="stretch")
 
 # --- Mensagem Final ---
 st.markdown("---")

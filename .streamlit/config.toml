@@ -1,0 +1,4 @@
+[theme]
+# Fixa o tema claro: o CSS das tabelas de resultados usa cores claras fixas
+# e ficaria ilegível se o navegador do usuário estivesse em modo escuro.
+base = "light"
