@@ -1,6 +1,6 @@
 import math
 
-def calcular_solicitante(metodo, tirantes, Lx, Ly, dist_terças, ang, q_p_terça, q_p_chapa, dim_tirante, q_v, Ix, Iy, debug=False):
+def calcular_solicitante(metodo, tirantes, Lx, Ly, dist_terças, ang, q_p_terça, q_p_chapa, dim_tirante, q_v, Ix, Iy, q_sc=0.25, debug=False):
     print("\n🧩 [DEBUG] Iniciando cálculo de solicitante...") if debug else None
 
     # Conversões
@@ -45,7 +45,7 @@ def calcular_solicitante(metodo, tirantes, Lx, Ly, dist_terças, ang, q_p_terça
     q_p_ky = carga_perm_total * math.sin(math.radians(ang))
 
     # Sobrecarga (Sempre vertical para baixo -> Projetada)
-    q_sc_total = -0.25 * dist_terças_m # 0.25 kN/m² norma
+    q_sc_total = -abs(q_sc) * dist_terças_m # kN/m² definido pelo usuário (norma: 0.25)
     q_sc_x = q_sc_total * math.cos(math.radians(ang))
     q_sc_y = q_sc_total * math.sin(math.radians(ang))
 

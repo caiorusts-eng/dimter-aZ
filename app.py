@@ -93,7 +93,7 @@ def fmt_single(val, check):
     return f"{val:.3f} <span class='{cor}'>({check})</span>"
 
 # --- FUNÇÃO DE ANÁLISE ATUALIZADA ---
-def run_analysis(perfil, tipo, nome_perfil_completo, is_custom, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, debug=False):
+def run_analysis(perfil, tipo, nome_perfil_completo, is_custom, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, q_sc=0.25, debug=False):
     """
     Executa a análise completa para um perfil (catálogo ou customizado).
     Retorna um dicionário flat com todos os resultados e o status de verificação (booleano).
@@ -108,7 +108,7 @@ def run_analysis(perfil, tipo, nome_perfil_completo, is_custom, fy, Lx, Ly, Lz, 
         Msd_x, Msd_y, q_x, q_y, flecha_x, flecha_y, q_fx, q_fy, Vsd, Fwsd_ext, Fwsd_int = calcular_solicitante(
             metodo, tirantes, Lx, Ly, dist_tercas, ang,
             q_p_terca, q_p_chapa, dim_tirante, q_v,
-            Ix, Iy, debug=debug
+            Ix, Iy, q_sc=q_sc, debug=debug
         )
 
         # 2. Executar cálculos estruturais (Resistentes)
@@ -348,6 +348,7 @@ with st.sidebar:
     st.subheader("⚖️ Carregamentos")
     q_p_chapa = st.number_input("Peso próprio da telha (kg/m²)", value=-5.0, step=0.5, format="%.2f") / 100
     q_v = st.number_input("Carga de vento (kN/m²)", value=-0.5, step=0.1, format="%.2f")
+    q_sc = st.number_input("Sobrecarga (kN/m²)", min_value=0.0, value=0.25, step=0.05, format="%.2f", help="Sobrecarga de utilização. NBR 8800: mínimo 0.25 kN/m².")
     Ncsd = 0.0
     if quadro_contraventado:
         # Help text atualizado
@@ -435,13 +436,13 @@ if st.sidebar.button("Analisar Perfis", type="primary", use_container_width=True
                 # Analisa todos e adiciona na lista
                 for p_args in perfis_a_analisar:
                     # Passa o 'debug_mode'
-                    resultado, passou = run_analysis(*p_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, debug=debug_mode)
+                    resultado, passou = run_analysis(*p_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, q_sc=q_sc, debug=debug_mode)
                     if resultado:
                         resultados_finais.append(resultado)
             else:
                 # Análise individual (ou customizado)
                 primeiro_perfil_args = perfis_a_analisar[0]
-                primeiro_resultado, passou = run_analysis(*primeiro_perfil_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, debug=debug_mode)
+                primeiro_resultado, passou = run_analysis(*primeiro_perfil_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, q_sc=q_sc, debug=debug_mode)
                 
                 if primeiro_resultado:
                     resultados_finais.append(primeiro_resultado)
@@ -452,7 +453,7 @@ if st.sidebar.button("Analisar Perfis", type="primary", use_container_width=True
                         # Itera no *restante* da lista (que já contém os próximos)
                         for i in range(1, len(perfis_a_analisar)):
                             proximo_perfil_args = perfis_a_analisar[i]
-                            resultado_sugerido, passou_sugerido = run_analysis(*proximo_perfil_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, debug=debug_mode)
+                            resultado_sugerido, passou_sugerido = run_analysis(*proximo_perfil_args, fy, Lx, Ly, Lz, Cb, c, metodo, q_p_chapa, q_v, Ncsd, telha_trava, quadro_contraventado, tirantes, dist_tercas, ang, dim_tirante, q_sc=q_sc, debug=debug_mode)
                             
                             if resultado_sugerido and passou_sugerido:
                                 st.success(f"**Sugestão:** O perfil **{proximo_perfil_args[2]}** é a opção seguinte que atende aos requisitos.")
