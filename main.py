@@ -133,8 +133,8 @@ def main():
         )
 
     # --- Verificação ELS (Flecha) ---
-    limite_flecha_x = (Lx / 180) if q_fx < 0 else (Lx / 120)
-    limite_flecha_y = (Ly / 180) if q_fy < 0 else (Ly / 120)
+    limite_flecha_x = (Lx / 250) if q_fx < 0 else (Lx / 120)
+    limite_flecha_y = (Ly / 250) if q_fy < 0 else (Ly / 120)
     passa_flecha_x = abs(flecha_x) <= limite_flecha_x
     passa_flecha_y = abs(flecha_y) <= limite_flecha_y
     passa_els = "✅" if (passa_flecha_x and passa_flecha_y) else "❌"
